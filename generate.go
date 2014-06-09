@@ -13,6 +13,8 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+
+	myruntime "./runtime"
 )
 
 const (
@@ -210,7 +212,7 @@ func output(outpath string, mds MyData) {
 
 	tpl := template.Must(template.New("mytemplate").Parse(template_text))
 
-	if err := tpl.Execute(file, mds); err != nil {
+	if err := tpl.Execute(myruntime.NewWriter(file, myruntime.AutoDetect), mds); err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		file.Close()
 		os.Exit(1)

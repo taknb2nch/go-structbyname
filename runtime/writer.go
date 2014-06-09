@@ -14,9 +14,10 @@ const (
 )
 
 type Writer struct {
-	w io.Writer
-	//platformType  PlatformType
+	w             io.Writer
 	lineSeparator []byte
+	lastByte      byte
+	//platformType  PlatformType
 }
 
 func NewWriter(w io.Writer, platformType PlatformType) *Writer {
@@ -35,17 +36,19 @@ func NewWriter(w io.Writer, platformType PlatformType) *Writer {
 		lineSeparator = []byte{'\r', '\n'}
 	}
 
-	return &Writer{w, lineSeparator}
+	return &Writer{w, lineSeparator, '\000'}
 }
 
 func (w *Writer) Write(p []byte) (n int, err error) {
 	b := make([]byte, 0)
 	for _, c := range p {
-		if c == '\n' {
+		if w.lastByte != '\r' && c == '\n' {
 			b = append(b, w.lineSeparator...)
 		} else {
 			b = append(b, c)
 		}
+
+		w.lastByte = c
 	}
 
 	return w.w.Write(b)

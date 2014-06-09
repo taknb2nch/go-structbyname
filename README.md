@@ -63,7 +63,7 @@ If you try,
 
 1. delete mystructs directory
 1. execute generator.   
-```$ go run generate -pd ./sample```
+```$ go run generate.go -pd ./sample```
 1. execute main  
 ```$ go run ./sample/main.go```
 

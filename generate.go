@@ -374,9 +374,6 @@ func convertLineSeparetor(s string, platformType PlatformType) (string, error) {
 		}
 
 		s = r.ReplaceAllString(s, "\n")
-		if err != nil {
-			return s, err
-		}
 
 		r, err = regexp.Compile("\n")
 		if err != nil {

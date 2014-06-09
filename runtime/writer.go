@@ -34,6 +34,8 @@ func NewWriter(w io.Writer, platformType PlatformType) *Writer {
 		lineSeparator = []byte{'\n'}
 	case Windows:
 		lineSeparator = []byte{'\r', '\n'}
+	default:
+		lineSeparator = []byte{'\n'}
 	}
 
 	return &Writer{w, lineSeparator, '\000'}

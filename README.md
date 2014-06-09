@@ -12,6 +12,7 @@ source code generator to create a instance of struct by name in golang.
 - -pr : package root (optional)
 - -o  : output file (optional: ./mystructs/structs.go)
 - -d  : target directory to parse (optional: ./)
+- -L  : line separetor u: LF, w: CRLF, default: auto detect (optional)
 
 If you run the generate command, mystructs/structs.go is created. 
 You can get an instance of the structure by importing mystructs pacakge, and by executing mystruct.New function with the structure name.

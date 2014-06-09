@@ -1,11 +1,15 @@
 package main
 
 import (
+	"bytes"
 	"errors"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"path/filepath"
+	"regexp"
+	"runtime"
 	"sort"
 	"strings"
 	"text/template"
@@ -14,18 +18,22 @@ import (
 	"go/parser"
 	"go/token"
 
-	myruntime "./runtime"
+	//myruntime "./runtime"
 )
 
 const (
 	OWN_NAME = "generator.go"
+
+	NEWLINE_FLAG_U = "u"
+	NEWLINE_FLAG_W = "w"
 )
 
 var (
-	paramPackageRoot = flag.String("pr", "", "package root (import path)")
-	paramRootDir     = flag.String("pd", "", "project root directory")
-	paramOutput      = flag.String("o", "./mystructs/structs.go", "output file (from project root)")
-	paramStructDir   = flag.String("d", "./", "target directory (from project root)")
+	paramRootDir       = flag.String("pd", "", "project root directory : required")
+	paramPackageRoot   = flag.String("pr", "", "package root (import path) : optional")
+	paramOutput        = flag.String("o", "./mystructs/structs.go", "output file (from project root) : optional")
+	paramStructDir     = flag.String("d", "./", "target directory (from project root) : optional")
+	paramLineSeparetor = flag.String("L", "", "line separetor u: LF, w: CRLF, default: auto detect : optional")
 )
 
 func main() {
@@ -40,7 +48,6 @@ func main() {
 	flag.Parse()
 
 	if *paramRootDir == "" {
-		fmt.Fprintf(os.Stderr, "-pd option is required.\n")
 		flag.PrintDefaults()
 		os.Exit(1)
 	}
@@ -73,6 +80,14 @@ func main() {
 	}
 
 	structDir = filepath.Join(rootDir, *paramStructDir)
+
+	if *paramLineSeparetor != "" &&
+		*paramLineSeparetor != NEWLINE_FLAG_U &&
+		*paramLineSeparetor != NEWLINE_FLAG_W {
+
+		flag.PrintDefaults()
+		os.Exit(1)
+	}
 
 	fmt.Println("packageRoot", packageRoot)
 	fmt.Println("outputFile", outputFile)
@@ -137,7 +152,8 @@ func main() {
 			MyPackage:   parseMyPackage(*paramOutput),
 			BasePackage: packageRoot,
 			Packages:    mds,
-		})
+		},
+		*paramLineSeparetor)
 }
 
 func getProjectRoot(rootDir string) (string, error) {
@@ -201,28 +217,57 @@ func parseMyPackage(path string) string {
 	return ps[len(ps)-1]
 }
 
-func output(outpath string, mds MyData) {
+func output(outpath string, mds MyData, newlineFlag string) {
+	var err error
+
 	mkdir(outpath)
 
-	file, err := os.OpenFile(outpath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0600)
+	tpl := template.Must(template.New("mytemplate").Parse(template_text))
+
+	b := make([]byte, 0)
+	buf := bytes.NewBuffer(b)
+
+	if err = tpl.Execute(buf, mds); err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		os.Exit(1)
+	}
+
+	s := strings.TrimSpace(buf.String())
+	s, err = convertLineSeparetor(s, newlineFlagToEnum(newlineFlag))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
 	}
 
-	tpl := template.Must(template.New("mytemplate").Parse(template_text))
-
-	if err := tpl.Execute(myruntime.NewWriter(file, myruntime.AutoDetect), mds); err != nil {
-		fmt.Fprintf(os.Stderr, "%v\n", err)
-		file.Close()
-		os.Exit(1)
-	}
-
-	if err = file.Close(); err != nil {
+	err = ioutil.WriteFile(outpath, []byte(s), 0600)
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
 	}
 }
+
+// func output(outpath string, mds MyData, newlineFlag string) {
+// 	mkdir(outpath)
+
+// 	file, err := os.OpenFile(outpath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0600)
+// 	if err != nil {
+// 		fmt.Fprintf(os.Stderr, "%v\n", err)
+// 		os.Exit(1)
+// 	}
+
+// 	tpl := template.Must(template.New("mytemplate").Parse(template_text))
+
+// 	if err := tpl.Execute(myruntime.NewWriter(file, newlineFlagToEnum(newlineFlag)), mds); err != nil {
+// 		fmt.Fprintf(os.Stderr, "%v\n", err)
+// 		file.Close()
+// 		os.Exit(1)
+// 	}
+
+// 	if err = file.Close(); err != nil {
+// 		fmt.Fprintf(os.Stderr, "%v\n", err)
+// 		os.Exit(1)
+// 	}
+// }
 
 func parseFile(f *ast.File) []string {
 	ss := make([]string, 0)
@@ -299,3 +344,74 @@ func New(name string) (interface{}, bool) {
 	return v.Interface(), true
 }
 `
+
+type PlatformType uint32
+
+const (
+	AutoDetect PlatformType = iota
+	Unix
+	Windows
+)
+
+func convertLineSeparetor(s string, platformType PlatformType) (string, error) {
+	if platformType != Unix && platformType != Windows {
+		if runtime.GOOS == "windows" {
+			platformType = Windows
+		} else {
+			platformType = Unix
+		}
+	}
+
+	var (
+		r   *regexp.Regexp
+		err error
+	)
+
+	if platformType == Windows {
+		r, err = regexp.Compile("\r\n")
+		if err != nil {
+			return s, err
+		}
+
+		s = r.ReplaceAllString(s, "\n")
+		if err != nil {
+			return s, err
+		}
+
+		r, err = regexp.Compile("\n")
+		if err != nil {
+			return s, err
+		}
+
+		return r.ReplaceAllString(s, "\r\n"), nil
+	} else {
+		r, err = regexp.Compile("\r\n")
+		if err != nil {
+			return s, err
+		}
+
+		return r.ReplaceAllString(s, "\n"), nil
+	}
+}
+
+func newlineFlagToEnum(s string) PlatformType {
+	switch s {
+	case NEWLINE_FLAG_U:
+		return Unix
+	case NEWLINE_FLAG_W:
+		return Windows
+	default:
+		return AutoDetect
+	}
+}
+
+// func newlineFlagToEnum(s string) myruntime.PlatformType {
+// 	switch s {
+// 	case NEWLINE_FLAG_U:
+// 		return myruntime.Unix
+// 	case NEWLINE_FLAG_W:
+// 		return myruntime.Windows
+// 	default:
+// 		return myruntime.AutoDetect
+// 	}
+// }

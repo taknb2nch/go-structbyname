@@ -14,42 +14,49 @@ const (
 )
 
 type Writer struct {
-	w             io.Writer
-	lineSeparator []byte
-	lastByte      byte
-	//platformType  PlatformType
+	w            io.Writer
+	platformType PlatformType
+	lastByte     byte
 }
 
 func NewWriter(w io.Writer, platformType PlatformType) *Writer {
-	var lineSeparator []byte
-
-	switch platformType {
-	case AutoDetect:
+	if platformType != Unix && platformType != Windows {
 		if runtime.GOOS == "windows" {
-			lineSeparator = []byte{'\r', '\n'}
+			platformType = Windows
 		} else {
-			lineSeparator = []byte{'\n'}
+			platformType = Unix
 		}
-	case Unix:
-		lineSeparator = []byte{'\n'}
-	case Windows:
-		lineSeparator = []byte{'\r', '\n'}
-	default:
-		lineSeparator = []byte{'\n'}
 	}
 
-	return &Writer{w, lineSeparator, '\000'}
+	return &Writer{w, platformType, '\000'}
 }
 
 func (w *Writer) Write(p []byte) (n int, err error) {
 	b := make([]byte, 0)
-	for _, c := range p {
-		if w.lastByte != '\r' && c == '\n' {
-			b = append(b, w.lineSeparator...)
-		} else {
-			b = append(b, c)
-		}
 
+	var fn func(a byte)
+
+	if w.platformType == Windows {
+		fn = func(c byte) {
+			if w.lastByte != '\r' && c == '\n' {
+				b = append(b, '\r')
+				b = append(b, '\n')
+			} else {
+				b = append(b, c)
+			}
+		}
+	} else {
+		fn = func(c byte) {
+			if w.lastByte == '\r' && c == '\n' {
+				b[len(b)-1] = '\n'
+			} else {
+				b = append(b, c)
+			}
+		}
+	}
+
+	for _, c := range p {
+		fn(c)
 		w.lastByte = c
 	}
 
